@@ -10,7 +10,7 @@ import os
 import json
 import asyncio
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import List, Dict, Optional, Any
 import re
@@ -33,26 +33,26 @@ RAW_DATA_PATH = os.getenv('RAW_DATA_PATH', './data/raw')
 IMAGES_PATH = os.getenv('IMAGES_PATH', './data/raw/images')
 LOGS_PATH = os.getenv('LOGS_PATH', './logs')
 
-# Telegram channels to scrape
-# Telegram channels to scrape - Verified from et.tgstat.com/medicine
+# ============================================================================
+# Telegram channels to scrape - VERIFIED USERNAMES
+# ============================================================================
 CHANNELS = [
-    'doctors_online_et',         
-    'medicalinfoethiopia',       
-    'hakimed_et',                 
-
-    'lobelia4cosmetics',          
-    'med_in_ethiopia',           
-    'efda_et',                    
+    # Medical Information channels
+    'tenamereja',              # Medical Information- ጤና መረጃ
+    'HakimApps_Guideline',     # Hakimed: Medical Resources
     
-  
-    'pharmacist_rayid',           
-    'rayapharma_et',             
+    # Pharmacy channels
+    'lobelia4cosmetics',       # Lobelia pharmacy and cosmetics
+    'EPSA_Ethiopia',           # Ethiopian Pharmaceutical Students Association
+    'epsaethiopia2012',        # Ethiopian Pharmaceutical Supply Service - EPSS
     
-   
-    'tikvah2024',                 # Tikvah World - main channel
-    'tikvah_tena',                # Tikvah Health
-    'TikvahEthiopia',             # Tikvah Ethiopia
-    'EMSA_ETHIOPIA',              # Ethiopian Medical Students Association
+    # Health channels
+    'healthinovation',         # Health info & vacancy news (HIVN)
+    'ClinicalPharmGuideline',  # Clinical Practice guidelines
+    
+    # Medical channels
+    'tikvahethiopia',          # TIKVAH-ETHIOPIA
+    'medinethiopiainsider',    # Med In Ethiopia
 ]
 
 # Create directories
@@ -111,10 +111,10 @@ class TelegramScraper:
                 self.api_hash
             )
             await self.client.start(phone=self.phone)
-            logger.info(" Connected to Telegram API")
+            logger.info("✅ Connected to Telegram API")
             return True
         except Exception as e:
-            logger.error(f" Failed to connect: {e}")
+            logger.error(f"❌ Failed to connect: {e}")
             return False
     
     async def disconnect(self):
@@ -152,27 +152,21 @@ class TelegramScraper:
             except Exception as e:
                 logger.error(f"Error finding channel: {e}")
                 return None
+        except Exception as e:
+            logger.error(f"Error finding channel: {e}")
+            return None
     
     async def scrape_channel(
         self, 
         channel_name: str, 
-        limit: int = 500,
+        limit: int = 1000,
         start_date: Optional[datetime] = None,
         end_date: Optional[datetime] = None
     ) -> List[Dict]:
         """
         Scrape messages from a Telegram channel
-        
-        Args:
-            channel_name: Channel username or name
-            limit: Maximum number of messages to scrape
-            start_date: Start date for filtering
-            end_date: End date for filtering
-            
-        Returns:
-            List of message dictionaries
         """
-        logger.info(f" Scraping channel: {channel_name}")
+        logger.info(f"🔄 Scraping channel: {channel_name}")
         
         # Get channel entity
         entity = await self.get_channel_entity(channel_name)
@@ -184,18 +178,26 @@ class TelegramScraper:
         images_downloaded = 0
         
         try:
-            # Scrape messages
+            # Scrape messages - SIMPLIFIED (no offset_date, no reverse)
             async for message in self.client.iter_messages(
                 entity,
-                limit=limit,
-                offset_date=end_date,
-                reverse=True
+                limit=limit
             ):
-                # Apply date filters
-                if start_date and message.date < start_date:
-                    continue
-                if end_date and message.date > end_date:
-                    continue
+                # Apply date filters - handle timezone-aware comparison
+                if start_date:
+                    # Make message.date timezone-aware if needed
+                    msg_date = message.date
+                    if msg_date.tzinfo is None:
+                        msg_date = msg_date.replace(tzinfo=timezone.utc)
+                    if msg_date < start_date:
+                        continue
+                
+                if end_date:
+                    msg_date = message.date
+                    if msg_date.tzinfo is None:
+                        msg_date = msg_date.replace(tzinfo=timezone.utc)
+                    if msg_date > end_date:
+                        continue
                 
                 # Extract message data
                 message_dict = self._extract_message_data(
@@ -229,8 +231,8 @@ class TelegramScraper:
         except Exception as e:
             logger.error(f"Error scraping {channel_name}: {e}")
         
-        logger.info(f" Scraped {len(messages_data)} messages from {channel_name}")
-        logger.info(f"  Downloaded {images_downloaded} images")
+        logger.info(f"✅ Scraped {len(messages_data)} messages from {channel_name}")
+        logger.info(f"  📸 Downloaded {images_downloaded} images")
         
         return messages_data
     
@@ -242,14 +244,6 @@ class TelegramScraper:
     ) -> Dict:
         """
         Extract structured data from a Telegram message
-        
-        Args:
-            message: Telethon message object
-            channel_username: Channel username
-            channel_title: Channel title
-            
-        Returns:
-            Dictionary with extracted data
         """
         data = {
             'message_id': message.id,
@@ -264,7 +258,7 @@ class TelegramScraper:
             'image_path': None,
             'image_downloaded': False,
             'reply_to': message.reply_to_msg_id if message.reply_to_msg_id else None,
-            'raw_data': str(message)  # For debugging
+            'raw_data': str(message)
         }
         
         # Determine media type
@@ -284,13 +278,6 @@ class TelegramScraper:
     ) -> Optional[str]:
         """
         Download image from a message
-        
-        Args:
-            message: Telethon message object
-            channel_name: Channel name for folder organization
-            
-        Returns:
-            Path to downloaded image or None
         """
         try:
             # Create channel directory
@@ -323,20 +310,12 @@ class TelegramScraper:
     
     async def scrape_all_channels(
         self,
-        limit: int = 500,
+        limit: int = 1000,
         start_date: Optional[datetime] = None,
         end_date: Optional[datetime] = None
     ) -> Dict[str, List[Dict]]:
         """
         Scrape all configured channels
-        
-        Args:
-            limit: Maximum messages per channel
-            start_date: Start date for filtering
-            end_date: End date for filtering
-            
-        Returns:
-            Dictionary mapping channel names to message lists
         """
         results = {}
         
@@ -365,10 +344,6 @@ class TelegramScraper:
     def _save_channel_data(self, channel_name: str, messages: List[Dict]):
         """
         Save scraped data for a channel
-        
-        Args:
-            channel_name: Name of the channel
-            messages: List of message dictionaries
         """
         if not messages:
             logger.warning(f"No data to save for {channel_name}")
@@ -386,26 +361,23 @@ class TelegramScraper:
         try:
             with open(filepath, 'w', encoding='utf-8') as f:
                 json.dump(messages, f, ensure_ascii=False, indent=2)
-            logger.info(f" Saved {len(messages)} messages to {filepath}")
+            logger.info(f"💾 Saved {len(messages)} messages to {filepath}")
         except Exception as e:
             logger.error(f"Failed to save data for {channel_name}: {e}")
     
     async def scrape_recent_messages(
         self,
-        days_back: int = 30,
-        limit_per_channel: int = 500
+        days_back: int = 90,
+        limit_per_channel: int = 1000
     ):
         """
         Scrape recent messages from all channels
-        
-        Args:
-            days_back: Number of days to look back
-            limit_per_channel: Maximum messages per channel
         """
-        start_date = datetime.now() - timedelta(days=days_back)
-        end_date = datetime.now()
+        # Make dates timezone-aware
+        end_date = datetime.now(timezone.utc)
+        start_date = end_date - timedelta(days=days_back)
         
-        logger.info(f" Scraping messages from {start_date.date()} to {end_date.date()}")
+        logger.info(f"📅 Scraping messages from {start_date.date()} to {end_date.date()}")
         
         results = await self.scrape_all_channels(
             limit=limit_per_channel,
@@ -415,7 +387,7 @@ class TelegramScraper:
         
         # Print summary
         logger.info("\n" + "="*60)
-        logger.info(" SCRAPING SUMMARY")
+        logger.info("📊 SCRAPING SUMMARY")
         logger.info("="*60)
         for channel, messages in results.items():
             logger.info(f"{channel}: {len(messages)} messages")
@@ -428,11 +400,13 @@ async def main():
     Main function to run the scraper
     """
 
-    logger.info(" TELEGRAM MEDICAL PRODUCTS SCRAPER")
+    logger.info("="*60)
+    logger.info("🏥 TELEGRAM MEDICAL PRODUCTS SCRAPER")
+    logger.info("="*60)
     
     # Check credentials
     if not API_ID or not API_HASH:
-        logger.error(" API credentials not found. Please check .env file")
+        logger.error("❌ API credentials not found. Please check .env file")
         return
     
     # Initialize scraper
@@ -440,20 +414,20 @@ async def main():
     
     # Connect to Telegram
     if not await scraper.connect():
-        logger.error(" Failed to connect to Telegram")
+        logger.error("❌ Failed to connect to Telegram")
         return
     
     try:
         # Scrape recent messages
         results = await scraper.scrape_recent_messages(
-            days_back=30,
-            limit_per_channel=500
+            days_back=90,
+            limit_per_channel=1000
         )
         
-        logger.info("\n Scraping completed successfully!")
+        logger.info("\n✅ Scraping completed successfully!")
         
     except Exception as e:
-        logger.error(f" Scraping failed: {e}")
+        logger.error(f"❌ Scraping failed: {e}")
     
     finally:
         await scraper.disconnect()

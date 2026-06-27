@@ -30,3 +30,7 @@ data/
 target/
 dbt_packages/
 logs/
+# Telegram session files
+*.session
+*.session-journal
+src/*.session
