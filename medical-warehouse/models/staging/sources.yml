@@ -1,0 +1,40 @@
+# models/staging/sources.yml
+version: 2
+
+sources:
+  - name: raw
+    schema: raw
+    tables:
+      - name: telegram_messages
+        description: "Raw Telegram messages from the data lake"
+        columns:
+          - name: id
+            description: "Surrogate key"
+          - name: message_id
+            description: "Original message ID from Telegram"
+          - name: channel_name
+            description: "Name of the channel"
+          - name: channel_username
+            description: "Username of the channel"
+          - name: message_date
+            description: "Timestamp of the message"
+          - name: message_text
+            description: "Text content of the message"
+          - name: views
+            description: "Number of views"
+          - name: forwards
+            description: "Number of forwards"
+          - name: has_media
+            description: "Whether the message has media"
+          - name: media_type
+            description: "Type of media"
+          - name: image_path
+            description: "Path to downloaded image"
+          - name: image_downloaded
+            description: "Whether image was downloaded"
+          - name: reply_to
+            description: "ID of the message this replies to"
+          - name: raw_data
+            description: "Raw JSON data for debugging"
+          - name: loaded_at
+            description: "Timestamp when data was loaded"
