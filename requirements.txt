@@ -24,3 +24,7 @@ dagster-webserver==1.5.0
 
 tqdm==4.65.0
 loguru==0.7.0
+# Task 5 - Pipeline Orchestration
+dagster==1.5.0
+dagster-webserver==1.5.0
+dagster-postgres==0.22.0
